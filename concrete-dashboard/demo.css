@@ -1,0 +1,16 @@
+.demo-banner {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 11px 16px;
+  border: 1px solid #d7b766;
+  background: #fff8df;
+  color: #624b13;
+  border-radius: 8px;
+}
+.demo-banner b { font-size: 12px; letter-spacing: .12em; color: #8a5b00; }
+.demo-banner span { font-size: 13px; }
+@media (max-width: 760px) { .demo-banner { align-items: flex-start; flex-direction: column; gap: 3px; } }
+
+
