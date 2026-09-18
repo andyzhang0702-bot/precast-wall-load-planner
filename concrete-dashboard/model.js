@@ -1,0 +1,19 @@
+'use strict';
+globalThis.Analysis = (() => {
+  const raw=globalThis.CONCRETE_DATA;
+  const rows=raw.rows.map(a=>{const r=Object.fromEntries(raw.columns.map((k,i)=>[k,a[i]]));r.binder=r.opc+r.pfa+r.ggbs+r.msf;r.system=['pfa','ggbs','msf'].filter(k=>r[k]>0).map(k=>k.toUpperCase()).join('+')||'OPC';return r;});
+  const defaults={year:'2',quarter:'all',plant:'all',grade:'all',authority:'all',material:'opc'};
+  const sum=(rr,k)=>rr.reduce((s,r)=>s+r[k],0);
+  const div=(a,b)=>b>0?a/b:null;
+  const months=(y,q)=>Array.from({length:y==3?3:12},(_,i)=>i+1).filter(m=>q==='all'||Math.ceil(m/3)==q);
+  const filter=(f,over={})=>{const v={...f,...over};return rows.filter(r=>(v.year==='all'||r.year==v.year)&&(v.quarter==='all'||Math.ceil(r.month/3)==v.quarter)&&['plant','grade','authority'].every(k=>v[k]==='all'||r[k]===v[k]));};
+  function stats(rr){const o={n:sum(rr,'records'),volume:sum(rr,'volume'),mixes:new Set(rr.map(r=>r.mix)).size,plants:new Set(rr.map(r=>r.plant)).size};for(const k of ['opc','pfa','ggbs','msf','water','binder'])o[k]=sum(rr,k);o.unit=div(o.binder,o.volume);o.opcUnit=div(o.opc,o.volume);o.scm=div(o.pfa+o.ggbs+o.msf,o.binder);o.waterBinder=div(o.water,o.binder);return o;}
+  function material(rr,k){const known=rr.filter(r=>k!=='ggbs'||r.year!==1);const s=stats(known);const used=known.filter(r=>r[k]>0);return {key:k,known:known.length>0,partial:known.length<rr.length,mass:known.length?sum(known,k):null,unit:div(sum(known,k),s.volume),usedUnit:div(sum(known,k),sum(used,'volume')),usedVolume:sum(used,'volume'),coverage:div(sum(used,'volume'),s.volume),binderShare:div(sum(known,k),s.binder),scopeVolume:s.volume};}
+  function group(rr,key){const m=new Map();for(const r of rr){const k=typeof key==='function'?key(r):r[key];if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return [...m].map(([key,items])=>({key,items,...stats(items)}));}
+  function annual(f){return [1,2,3].map(y=>{const rr=filter(f,{year:String(y)});const ms=months(y,f.quarter);const prior=filter(f,{year:String(y-1)}).filter(r=>ms.includes(r.month));const s=stats(rr),p=stats(prior);return {year:y,months:ms,items:rr,...s,yoy:p.volume&&s.volume?s.volume/p.volume-1:null,priorVolume:p.volume};});}
+  function monthly(f){const years=f.year==='all'?[1,2,3]:[+f.year];return years.flatMap(y=>months(y,f.quarter).map(m=>{const items=filter(f,{year:String(y)}).filter(r=>r.month===m);return {key:`Y${y}-${String(m).padStart(2,'0')}`,items,...stats(items)};}));}
+  function decompose(f){const rr0=filter(f,{year:'1'}).filter(r=>/^\d+$/.test(r.grade)),rr1=filter(f,{year:'2'}).filter(r=>/^\d+$/.test(r.grade));const g0=group(rr0,'grade'),g1=group(rr1,'grade');const common=g0.filter(a=>g1.some(b=>b.key===a.key)).map(a=>a.key);const a0=rr0.filter(r=>common.includes(r.grade)),a1=rr1.filter(r=>common.includes(r.grade));const t0=stats(a0),t1=stats(a1);let structure=0,within=0;for(const g of common){const a=stats(a0.filter(r=>r.grade===g)),b=stats(a1.filter(r=>r.grade===g));const w0=a.volume/t0.volume,w1=b.volume/t1.volume;structure+=(w1-w0)*(a.opcUnit+b.opcUnit)/2;within+=(b.opcUnit-a.opcUnit)*(w0+w1)/2;}return {valid:!!(t0.volume&&t1.volume),structure,within,total:structure+within,coverage0:div(t0.volume,stats(rr0).volume),coverage1:div(t1.volume,stats(rr1).volume)};}
+  function peers(rr){const groups=group(rr,r=>[r.plant,r.grade,r.authority,r.specifiedSlump,r.system].join('|'));const result=[];for(const p of groups){const mixes=group(p.items,'mix');if(mixes.length<3)continue;const us=mixes.map(m=>m.unit).sort((a,b)=>a-b);const mid=us.length%2?us[(us.length-1)/2]:(us[us.length/2-1]+us[us.length/2])/2;for(const m of mixes)result.push({...m,plant:m.items[0].plant,grade:m.items[0].grade,peers:mixes.length,median:mid,gap:m.unit-mid});}return result.sort((a,b)=>b.volume-a.volume);}
+  return {rows,defaults,filter,stats,material,group,annual,monthly,decompose,peers,div,sum,months,meta:raw.meta};
+})();
+
